@@ -21,8 +21,9 @@ WikiFactCheck - это инструмент для автоматической 
 
 ## Скриншоты
 
-![Screenshot 2025-05-04 231348](https://github.com/user-attachments/assets/a9c6b7b7-687e-4d86-ba95-e55aa46c547e)
-![Screenshot 2025-05-04 232241](https://github.com/user-attachments/assets/1ae8e93e-9731-4c5d-bb3b-ab10c0ecdaf8)
+![Screenshot 2025-05-05 011844](https://github.com/user-attachments/assets/01d2e2ef-f936-4289-a307-24830a4c11b9)
+![Screenshot 2025-05-05 011837](https://github.com/user-attachments/assets/1aa4ad4b-e94b-4539-abc2-53046c37df9b)
+![Screenshot 2025-05-05 012042](https://github.com/user-attachments/assets/409efcd9-1353-4823-9761-be0a8956652f)
 
 ## Требования
 
