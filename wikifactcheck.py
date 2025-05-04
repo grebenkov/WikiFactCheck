@@ -190,7 +190,7 @@ def colorize_article(text: str, word_probabilities: Dict[str, List[float]]) -> s
 
 def parse_arguments():
     """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description='Fact-check an article against sources using OpenAI.')
+    parser = argparse.ArgumentParser(description='Fact-check an article against sources using OpenAI API.')
     parser.add_argument('--base_url', type=str, help='Base URL for OpenAI API')
     parser.add_argument('--model', type=str, default='gpt-4.1-nano', help='OpenAI model name (default: gpt-4.1-nano)')
     return parser.parse_args()
