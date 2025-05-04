@@ -181,9 +181,39 @@ def colorize_article(text: str, word_probabilities: Dict[str, List[float]]) -> s
     tokens = tokenize_text(text)
     colored_text = []
     
-    for token, token_type in tokens:
-        if token_type in ["word", "punctuation"] and token.lower() in word_probabilities:
-            probs = word_probabilities[token.lower()]
+    for i, (token, token_type) in enumerate(tokens):
+        if token_type == "word":
+            # Try to find probability for this word
+            word_lower = token.lower()
+            
+            # Check if word exists in probabilities
+            if word_lower in word_probabilities:
+                probs = word_probabilities[word_lower]
+            else:
+                # Check if word with adjacent punctuation exists in probabilities
+                # Look ahead for punctuation
+                compound_word = word_lower
+                next_index = i + 1
+                while next_index < len(tokens) and tokens[next_index][1] == "punctuation":
+                    compound_word += tokens[next_index][0].lower()
+                    next_index += 1
+                
+                # Look behind for punctuation
+                prev_compound_word = word_lower
+                prev_index = i - 1
+                while prev_index >= 0 and tokens[prev_index][1] == "punctuation":
+                    prev_compound_word = tokens[prev_index][0].lower() + prev_compound_word
+                    prev_index -= 1
+                
+                # Check compounds
+                if compound_word in word_probabilities:
+                    probs = word_probabilities[compound_word]
+                elif prev_compound_word in word_probabilities:
+                    probs = word_probabilities[prev_compound_word]
+                else:
+                    probs = []
+            
+            # Color based on probability
             max_prob = max(probs) if probs else 0.0
             
             if max_prob > 0.7:
@@ -193,7 +223,7 @@ def colorize_article(text: str, word_probabilities: Dict[str, List[float]]) -> s
             else:
                 colored_text.append(f"{Fore.RED}{token}{Style.RESET_ALL}")
         else:
-            # Other tokens (spaces or tokens without probabilities)
+            # Punctuation and spaces remain uncolored
             colored_text.append(token)
     
     return ''.join(colored_text)
@@ -291,9 +321,39 @@ class WikiFactCheckGUI:
         tokens = tokenize_text(self.article_text)
         
         # Insert tokens with appropriate coloring
-        for token, token_type in tokens:
-            if token_type in ["word", "punctuation"] and token.lower() in self.word_probabilities[source_name]:
-                probs = self.word_probabilities[source_name][token.lower()]
+        for i, (token, token_type) in enumerate(tokens):
+            if token_type == "word":
+                # Try to find probability for this word
+                word_lower = token.lower()
+                
+                # Check if word exists in probabilities
+                if word_lower in self.word_probabilities[source_name]:
+                    probs = self.word_probabilities[source_name][word_lower]
+                else:
+                    # Check if word with adjacent punctuation exists in probabilities
+                    # Look ahead for punctuation
+                    compound_word = word_lower
+                    next_index = i + 1
+                    while next_index < len(tokens) and tokens[next_index][1] == "punctuation":
+                        compound_word += tokens[next_index][0].lower()
+                        next_index += 1
+                    
+                    # Look behind for punctuation
+                    prev_compound_word = word_lower
+                    prev_index = i - 1
+                    while prev_index >= 0 and tokens[prev_index][1] == "punctuation":
+                        prev_compound_word = tokens[prev_index][0].lower() + prev_compound_word
+                        prev_index -= 1
+                    
+                    # Check compounds
+                    if compound_word in self.word_probabilities[source_name]:
+                        probs = self.word_probabilities[source_name][compound_word]
+                    elif prev_compound_word in self.word_probabilities[source_name]:
+                        probs = self.word_probabilities[source_name][prev_compound_word]
+                    else:
+                        probs = []
+                
+                # Apply coloring based on probability
                 max_prob = max(probs) if probs else 0.0
                 
                 if max_prob > 0.7:
@@ -303,7 +363,7 @@ class WikiFactCheckGUI:
                 else:
                     self.text_display.insert(tk.END, token, "red")
             else:
-                # For tokens without probabilities
+                # For punctuation and spaces
                 self.text_display.insert(tk.END, token)
 
 def parse_arguments():
