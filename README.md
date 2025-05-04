@@ -74,6 +74,12 @@ The program outputs a color-coded version of the article text in the terminal:
 - **Yellow**: Words with moderate support
 - **Red**: Words with little to no support
 
+## Examples
+
+![Screenshot 2025-05-04 232813](https://github.com/user-attachments/assets/13862ed2-0b1a-4253-b721-10aab44d4ab3)
+
+![Screenshot 2025-05-04 233055](https://github.com/user-attachments/assets/9688a883-ad7c-44f6-9c56-558c701d6e3e)
+
 ## Limitations
 
 - Accuracy depends on the quality and completeness of source materials
