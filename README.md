@@ -6,11 +6,15 @@ WikiFactCheck is a **PROOF OF CONCEPT** Python tool that fact-checks article tex
 
 - Split articles into manageable blocks for processing
 - Analyze each word against multiple source documents
+- Two interface options:
+  - GUI interface with source-specific visualization
+  - Terminal output with color-coded text
 - Color-code article text based on verification confidence:
   - **Green**: High confidence (>70% probability)
   - **Yellow**: Medium confidence (35-70% probability)
   - **Red**: Low confidence (<35% probability)
 - Detailed JSON output of word-level verification
+- Source-specific fact checking analysis
 
 ## Installation
 
@@ -20,7 +24,7 @@ git clone https://github.com/grebenkov/wikifactcheck.git
 cd wikifactcheck
 
 # Install dependencies
-pip install -r openai colorama
+pip install openai colorama tkinter
 ```
 
 ## Requirements
@@ -30,6 +34,7 @@ pip install -r openai colorama
 - Required Python packages:
   - openai
   - colorama
+  - tkinter (for GUI interface)
 
 ## Usage
 
@@ -46,17 +51,22 @@ export OPENAI_API_KEY="your-api-key-here"
 3. Run the script:
 
 ```bash
+# For terminal interface
 python wikifactcheck.py
+
+# For GUI interface
+python wikifactcheck.py --gui
 ```
 
 ### Command-line Options
 
 - `--base_url`: Base URL for OpenAI API (optional, for using alternative API endpoints)
 - `--model`: OpenAI model to use (default: gpt-4.1-nano)
+- `--gui`: Launch the graphical user interface
 
 Example:
 ```bash
-python wikifactcheck.py --model gpt-4-turbo
+python wikifactcheck.py --model gpt-4-turbo --gui
 ```
 
 ## How It Works
@@ -65,11 +75,27 @@ python wikifactcheck.py --model gpt-4-turbo
 2. It splits the article into ~100-word blocks of complete sentences.
 3. For each block, it queries the OpenAI model to compare the text against each source.
 4. The model assigns a probability score (0.0 to 1.0) to each word, indicating how well it's supported.
-5. The program combines the results and color-codes the article text based on verification confidence.
+5. The program displays results either in the GUI or terminal interface:
+   - GUI: Shows source-specific analysis with interactive source selection
+   - Terminal: Shows combined analysis from all sources
+
+## Interface Options
+
+### GUI Interface
+- Interactive source selection
+- Real-time visualization of fact-checking results
+- Color-coded text display
+- Easy-to-use interface with scrollable text area
+- Source-specific analysis viewing
+
+### Terminal Interface
+- Color-coded output in the terminal
+- Combined analysis from all sources
+- Lightweight and fast
 
 ## Output
 
-The program outputs a color-coded version of the article text in the terminal:
+The program outputs a color-coded version of the article text:
 - **Green**: Words with strong support from sources
 - **Yellow**: Words with moderate support
 - **Red**: Words with little to no support
