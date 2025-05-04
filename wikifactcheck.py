@@ -10,6 +10,9 @@ from openai import OpenAI
 import colorama
 from colorama import Fore, Style
 import logging
+import tkinter as tk
+from tkinter import ttk, scrolledtext
+from tkinter import font as tkfont
 
 # Initialize colorama for terminal coloring
 colorama.init()
@@ -116,14 +119,21 @@ def query_chatgpt(client: OpenAI, article_block: str, source_text: str, model_na
     except Exception as e:
         print(f"Error querying ChatGPT: {e}")
         # Dump response
-        with open("request.json", "w", encoding="utf-8") as f:
-            f.write(response_text)
+        try:
+            with open("request.json", "w", encoding="utf-8") as f:
+                f.write(response_text)
+        except:
+            pass
         return {"probabilities": {}}
 
-def process_article_blocks(client: OpenAI, article_blocks: List[str], sources: Dict[str, str], model_name: str) -> Dict[str, List[float]]:
-    """Process each article block against each source and collect word probabilities."""
-    word_probabilities = {}
+def process_article_blocks(client: OpenAI, article_blocks: List[str], sources: Dict[str, str], model_name: str) -> Dict[str, Dict[str, List[float]]]:
+    """Process each article block against each source and collect word probabilities by source."""
+    source_word_probabilities = {}
     
+    # Initialize dict for each source
+    for source_name in sources.keys():
+        source_word_probabilities[source_name] = {}
+        
     for i, block in enumerate(article_blocks):
         print(f"Processing block {i+1}/{len(article_blocks)}...")
         
@@ -133,23 +143,23 @@ def process_article_blocks(client: OpenAI, article_blocks: List[str], sources: D
             # Query ChatGPT
             response = query_chatgpt(client, block, source_text, model_name)
             
-            # Update word probabilities
+            # Update word probabilities for this source
             if "probabilities" in response:
                 for word, prob in response["probabilities"].items():
                     word_lower = word.lower()
-                    if word_lower not in word_probabilities:
-                        word_probabilities[word_lower] = []
+                    if word_lower not in source_word_probabilities[source_name]:
+                        source_word_probabilities[source_name][word_lower] = []
                     
                     try:
                         prob_value = float(prob)
-                        word_probabilities[word_lower].append(prob_value)
+                        source_word_probabilities[source_name][word_lower].append(prob_value)
                     except (ValueError, TypeError):
                         print(f"Warning: Invalid probability for word '{word}': {prob}")
             
             # Add a small delay to avoid rate limits
             time.sleep(0.5)
     
-    return word_probabilities
+    return source_word_probabilities
 
 def tokenize_text(text: str) -> List[tuple]:
     """Tokenize text into words and non-words while preserving structure."""
@@ -188,11 +198,120 @@ def colorize_article(text: str, word_probabilities: Dict[str, List[float]]) -> s
     
     return ''.join(colored_text)
 
+class WikiFactCheckGUI:
+    """GUI for WikiFactCheck application."""
+    
+    def __init__(self, root, article_text, sources_data, word_probabilities):
+        self.root = root
+        self.root.title("WikiFactCheck")
+        self.root.geometry("1000x700")
+        
+        self.article_text = article_text
+        self.sources_data = sources_data
+        self.word_probabilities = word_probabilities
+        
+        # Create the main layout
+        self.create_layout()
+        
+        # Display first source by default
+        if self.sources_listbox.size() > 0:
+            self.sources_listbox.selection_set(0)
+            self.on_source_selected()
+    
+    def create_layout(self):
+        """Create the GUI layout."""
+        # Create main panel with padding
+        main_panel = ttk.Frame(self.root, padding="10")
+        main_panel.pack(fill=tk.BOTH, expand=True)
+        
+        # Create top panel for sources
+        sources_panel = ttk.LabelFrame(main_panel, text="Sources", padding="5")
+        sources_panel.pack(fill=tk.X, side=tk.TOP, pady=(0, 10))
+        
+        # Add sources listbox
+        self.sources_listbox = tk.Listbox(sources_panel, height=5)
+        self.sources_listbox.pack(fill=tk.X, padx=5, pady=5)
+        for source_name in self.sources_data.keys():
+            self.sources_listbox.insert(tk.END, source_name)
+        
+        # Bind selection event
+        self.sources_listbox.bind("<<ListboxSelect>>", lambda e: self.on_source_selected())
+        
+        # Create article display panel
+        article_panel = ttk.LabelFrame(main_panel, text="Article", padding="5")
+        article_panel.pack(fill=tk.BOTH, expand=True)
+        
+        # Add text display widget
+        self.text_display = scrolledtext.ScrolledText(article_panel, wrap=tk.WORD)
+        self.text_display.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Create legend panel
+        legend_panel = ttk.Frame(main_panel)
+        legend_panel.pack(fill=tk.X, side=tk.BOTTOM, pady=(10, 0))
+        
+        # Add color legend
+        ttk.Label(legend_panel, text="Legend:", font=("", 10, "bold")).pack(side=tk.LEFT, padx=(0, 10))
+        
+        green_label = ttk.Label(legend_panel, text="High support", foreground="green")
+        green_label.pack(side=tk.LEFT, padx=(0, 15))
+        
+        yellow_label = ttk.Label(legend_panel, text="Partial support", foreground="orange")
+        yellow_label.pack(side=tk.LEFT, padx=(0, 15))
+        
+        red_label = ttk.Label(legend_panel, text="Low/No support", foreground="red")
+        red_label.pack(side=tk.LEFT)
+        
+        # Add exit button
+        exit_button = ttk.Button(legend_panel, text="Exit", command=self.root.destroy)
+        exit_button.pack(side=tk.RIGHT)
+    
+    def on_source_selected(self):
+        """Handle source selection event."""
+        if not self.sources_listbox.curselection():
+            return
+            
+        # Get selected source
+        selected_index = self.sources_listbox.curselection()[0]
+        selected_source = self.sources_listbox.get(selected_index)
+        
+        # Update article display
+        self.display_article_for_source(selected_source)
+    
+    def display_article_for_source(self, source_name):
+        """Display article with color-coding based on selected source."""
+        # Clear current content
+        self.text_display.delete(1.0, tk.END)
+        
+        # Configure text tags for coloring
+        self.text_display.tag_configure("green", foreground="green")
+        self.text_display.tag_configure("yellow", foreground="orange")
+        self.text_display.tag_configure("red", foreground="red")
+        
+        # Get tokens from the article
+        tokens = tokenize_text(self.article_text)
+        
+        # Insert tokens with appropriate coloring
+        for token, token_type in tokens:
+            if token_type in ["word", "punctuation"] and token.lower() in self.word_probabilities[source_name]:
+                probs = self.word_probabilities[source_name][token.lower()]
+                max_prob = max(probs) if probs else 0.0
+                
+                if max_prob > 0.7:
+                    self.text_display.insert(tk.END, token, "green")
+                elif max_prob > 0.35:
+                    self.text_display.insert(tk.END, token, "yellow")
+                else:
+                    self.text_display.insert(tk.END, token, "red")
+            else:
+                # For tokens without probabilities
+                self.text_display.insert(tk.END, token)
+
 def parse_arguments():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description='Fact-check an article against sources using OpenAI API.')
     parser.add_argument('--base_url', type=str, help='Base URL for OpenAI API')
     parser.add_argument('--model', type=str, default='gpt-4.1-nano', help='OpenAI model name (default: gpt-4.1-nano)')
+    parser.add_argument('--gui', action='store_true', help='Use GUI interface instead of terminal output')
     return parser.parse_args()
 
 def main():
@@ -225,12 +344,26 @@ def main():
         article_blocks = split_into_blocks(article_text)
         
         # Process article blocks
-        word_probabilities = process_article_blocks(client, article_blocks, sources, args.model)
+        source_word_probabilities = process_article_blocks(client, article_blocks, sources, args.model)
         
-        # Colorize and print article
-        colored_article = colorize_article(article_text, word_probabilities)
-        print("\nColored Article Text:")
-        print(colored_article)
+        if args.gui:
+            # Launch GUI
+            root = tk.Tk()
+            app = WikiFactCheckGUI(root, article_text, sources, source_word_probabilities)
+            root.mainloop()
+        else:
+            # Terminal output - combine probabilities from all sources
+            combined_probabilities = {}
+            for source_probs in source_word_probabilities.values():
+                for word, probs in source_probs.items():
+                    if word not in combined_probabilities:
+                        combined_probabilities[word] = []
+                    combined_probabilities[word].extend(probs)
+            
+            # Colorize and print article
+            colored_article = colorize_article(article_text, combined_probabilities)
+            print("\nColored Article Text:")
+            print(colored_article)
         
     except Exception as e:
         logging.exception("An exception was thrown!")
