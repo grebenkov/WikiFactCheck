@@ -102,9 +102,9 @@ The program outputs a color-coded version of the article text:
 
 ## Examples
 
-![Screenshot 2025-05-04 232813](https://github.com/user-attachments/assets/13862ed2-0b1a-4253-b721-10aab44d4ab3)
-
-![Screenshot 2025-05-04 233055](https://github.com/user-attachments/assets/9688a883-ad7c-44f6-9c56-558c701d6e3e)
+![Screenshot 2025-05-05 012700](https://github.com/user-attachments/assets/26cccdcd-1826-4b7a-b9a0-5262ed6e108a)
+![Screenshot 2025-05-05 012815](https://github.com/user-attachments/assets/ae9b1d3a-ec71-4f6c-9fe3-94b2bfca0ea9)
+![Screenshot 2025-05-05 012801](https://github.com/user-attachments/assets/1fe69118-bd2d-4e57-ab4a-59351026f93c)
 
 ## Limitations
 
