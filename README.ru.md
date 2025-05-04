@@ -14,6 +14,11 @@ WikiFactCheck - это инструмент для автоматической 
   - Желтый: средняя вероятность достоверности (0.35-0.7)
   - Красный: низкая вероятность достоверности (<0.35)
 
+## Скриншоты
+
+![Screenshot 2025-05-04 231348](https://github.com/user-attachments/assets/a9c6b7b7-687e-4d86-ba95-e55aa46c547e)
+![Screenshot 2025-05-04 232241](https://github.com/user-attachments/assets/1ae8e93e-9731-4c5d-bb3b-ab10c0ecdaf8)
+
 ## Требования
 
 - Python 3.6+
