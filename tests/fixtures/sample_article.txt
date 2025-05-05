@@ -1,0 +1,1 @@
+This is a sample article for testing. It contains multiple sentences to test the text processing capabilities. The WikiFactCheck application should be able to analyze this text against various sources.
