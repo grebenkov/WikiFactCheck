@@ -16,6 +16,8 @@ from tkinter import font as tkfont
 
 # Initialize colorama for terminal coloring
 colorama.init()
+# Initialize logger
+logger = logging.getLogger(__name__)
 
 def load_article(file_path: str) -> str:
     """Load article text from file."""
@@ -28,7 +30,7 @@ def load_sources() -> Dict[str, str]:
     for source_file in sorted(glob.glob("source*.txt")):
         with open(source_file, 'r', encoding='utf-8') as file:
             sources[source_file] = file.read()
-            print(f"Loaded source: {source_file}")
+            logger.info(f"Loaded source: {source_file}")
     return sources
 
 def split_into_blocks(text: str, target_size: int = 100) -> List[str]:
@@ -54,12 +56,11 @@ def split_into_blocks(text: str, target_size: int = 100) -> List[str]:
     if current_block:
         blocks.append(' '.join(current_block))
     
-    print(f"Split article into {len(blocks)} blocks")
+    logger.info(f"Split article into {len(blocks)} blocks")
     return blocks
 
 def query_chatgpt(client: OpenAI, article_block: str, source_text: str, model_name: str) -> Dict[str, Any]:
     """Query ChatGPT to check article text against source."""
-    # Improved prompt for better results
     json_structure = r"""
     {
         "probabilities": {
@@ -80,6 +81,11 @@ def query_chatgpt(client: OpenAI, article_block: str, source_text: str, model_na
     - 0.4-0.6: Word has partial support or is ambiguous
     - 0.1-0.3: Word has minimal support or is tangentially related
     - 0.0: Word contradicts the source or has no support
+
+    IMPORTANT: When analyzing words, ignore punctuation. For example:
+    - For "Germany's" provide a probability for "Germany" (without apostrophe-s)
+    - For "(USA)" provide a probability for "USA" (without parentheses)
+    - For "Killer's" provide a probability for "Killer" (without apostrophe-s)
 
     Analyze EVERY SINGLE WORD, including articles (the, a, an), prepositions, and conjunctions.
 
@@ -115,16 +121,12 @@ def query_chatgpt(client: OpenAI, article_block: str, source_text: str, model_na
             if json_match:
                 return json.loads(json_match.group(1))
             else:
-                print(f"Failed to parse JSON response: {response_text[:100]}...")
+                logger.error(f"Failed to parse JSON response: {response_text[:100]}...")
+                logger.debug(f"JSON: {response_text}")
                 return {"probabilities": {}}
     except Exception as e:
-        print(f"Error querying ChatGPT: {e}")
-        # Dump response
-        try:
-            with open("request.json", "w", encoding="utf-8") as f:
-                f.write(response_text)
-        except:
-            pass
+        logger.exception(f"Error querying ChatGPT: {e}")
+        dump_string("invalid_response.json", response_text)
         return {"probabilities": {}}
 
 def process_article_blocks(client: OpenAI, article_blocks: List[str], sources: Dict[str, str], model_name: str) -> Dict[str, Dict[str, List[float]]]:
@@ -134,28 +136,79 @@ def process_article_blocks(client: OpenAI, article_blocks: List[str], sources: D
     # Initialize dict for each source
     for source_name in sources.keys():
         source_word_probabilities[source_name] = {}
+    
+    # Set to track words we've already warned about
+    warned_words = set()
         
     for i, block in enumerate(article_blocks):
-        print(f"Processing block {i+1}/{len(article_blocks)}...")
+        logger.info(f"Processing block {i+1}/{len(article_blocks)}...")
+        
+        # Tokenize the block to get words in order
+        tokens = tokenize_text(block)
+        words_in_block = [token[0] for token in tokens if token[1] == "word"]
         
         for source_name, source_text in sources.items():
-            print(f"  Checking against source: {source_name}")
+            logger.info(f"Checking against source: {source_name}")
             
             # Query ChatGPT
             response = query_chatgpt(client, block, source_text, model_name)
             
             # Update word probabilities for this source
             if "probabilities" in response:
+                # Create a mapping of words to their probabilities, including stripped versions
+                block_probs = {}
                 for word, prob in response["probabilities"].items():
+                    try:
+                        # Add the original word
+                        block_probs[word.lower()] = float(prob)
+                        
+                        # Also add a stripped version for robustness
+                        stripped_word = word.lower().strip('.,;:?!()[]{}"\'')
+                        if stripped_word and stripped_word != word.lower():
+                            # If multiple versions map to the same stripped word, use the highest probability
+                            if stripped_word in block_probs:
+                                block_probs[stripped_word] = max(block_probs[stripped_word], float(prob))
+                            else:
+                                block_probs[stripped_word] = float(prob)
+                                
+                        # Handle possessives
+                        if word.lower().endswith("'s"):
+                            base_word = word.lower()[:-2]
+                            if base_word not in block_probs or float(prob) > block_probs[base_word]:
+                                block_probs[base_word] = float(prob)
+                    except (ValueError, TypeError):
+                        logger.warning(f"Invalid probability for word '{word}': {prob}")
+                
+                # Assign probabilities to each word in the block in order
+                for word in words_in_block:
                     word_lower = word.lower()
+                    
+                    # Initialize the probabilities list if it doesn't exist
                     if word_lower not in source_word_probabilities[source_name]:
                         source_word_probabilities[source_name][word_lower] = []
                     
-                    try:
-                        prob_value = float(prob)
-                        source_word_probabilities[source_name][word_lower].append(prob_value)
-                    except (ValueError, TypeError):
-                        print(f"Warning: Invalid probability for word '{word}': {prob}")
+                    # Find probability for this word in the block
+                    found_prob = False
+                    
+                    # First, try the word as is
+                    if word_lower in block_probs:
+                        source_word_probabilities[source_name][word_lower].append(block_probs[word_lower])
+                        found_prob = True
+                    else:
+                        # Try the word with punctuation stripped
+                        stripped_word = word_lower.strip('.,;:?!()[]{}"\'')
+                        if stripped_word in block_probs:
+                            source_word_probabilities[source_name][word_lower].append(block_probs[stripped_word])
+                            found_prob = True
+                    
+                    # If we still didn't find a probability
+                    if not found_prob:
+                        if word_lower not in warned_words:
+                            logger.warning(f"No probability found for word '{word}'")
+                            warned_words.add(word_lower)
+                            # Only dump response the first time we see this issue
+                            logger.debug(f"Response {i} - {source_name}: {str(response)}")
+                        source_word_probabilities[source_name][word_lower].append(0.0)
             
             # Add a small delay to avoid rate limits
             time.sleep(0.5)
@@ -182,46 +235,34 @@ def colorize_article(text: str, word_probabilities: Dict[str, List[float]]) -> s
     tokens = tokenize_text(text)
     colored_text = []
     
-    for i, (token, token_type) in enumerate(tokens):
+    # Track occurrences of each word
+    word_occurrences = {}
+    
+    for token, token_type in tokens:
         if token_type == "word":
             # Try to find probability for this word
             word_lower = token.lower()
             
-            # Check if word exists in probabilities
-            if word_lower in word_probabilities:
-                probs = word_probabilities[word_lower]
+            # Track occurrence count
+            if word_lower not in word_occurrences:
+                word_occurrences[word_lower] = 0
             else:
-                # Check if word with adjacent punctuation exists in probabilities
-                # Look ahead for punctuation
-                compound_word = word_lower
-                next_index = i + 1
-                while next_index < len(tokens) and tokens[next_index][1] == "punctuation":
-                    compound_word += tokens[next_index][0].lower()
-                    next_index += 1
+                word_occurrences[word_lower] += 1
+            
+            current_occurrence = word_occurrences[word_lower]
+            
+            # Check if word exists in probabilities and we have data for this occurrence
+            if word_lower in word_probabilities and current_occurrence < len(word_probabilities[word_lower]):
+                prob = word_probabilities[word_lower][current_occurrence]
                 
-                # Look behind for punctuation
-                prev_compound_word = word_lower
-                prev_index = i - 1
-                while prev_index >= 0 and tokens[prev_index][1] == "punctuation":
-                    prev_compound_word = tokens[prev_index][0].lower() + prev_compound_word
-                    prev_index -= 1
-                
-                # Check compounds
-                if compound_word in word_probabilities:
-                    probs = word_probabilities[compound_word]
-                elif prev_compound_word in word_probabilities:
-                    probs = word_probabilities[prev_compound_word]
+                if prob > 0.7:
+                    colored_text.append(f"{Fore.GREEN}{token}{Style.RESET_ALL}")
+                elif prob > 0.35:
+                    colored_text.append(f"{Fore.YELLOW}{token}{Style.RESET_ALL}")
                 else:
-                    probs = []
-            
-            # Color based on probability
-            max_prob = max(probs) if probs else 0.0
-            
-            if max_prob > 0.7:
-                colored_text.append(f"{Fore.GREEN}{token}{Style.RESET_ALL}")
-            elif max_prob > 0.35:
-                colored_text.append(f"{Fore.YELLOW}{token}{Style.RESET_ALL}")
+                    colored_text.append(f"{Fore.RED}{token}{Style.RESET_ALL}")
             else:
+                # No probability or occurrence data, use red
                 colored_text.append(f"{Fore.RED}{token}{Style.RESET_ALL}")
         else:
             # Punctuation and spaces remain uncolored
@@ -321,52 +362,41 @@ class WikiFactCheckGUI:
         # Get tokens from the article
         tokens = tokenize_text(self.article_text)
         
+        # Track occurrences of each word
+        word_occurrences = {}
+        
         # Insert tokens with appropriate coloring
-        for i, (token, token_type) in enumerate(tokens):
+        for token, token_type in tokens:
             if token_type == "word":
                 # Try to find probability for this word
                 word_lower = token.lower()
                 
-                # Check if word exists in probabilities
-                if word_lower in self.word_probabilities[source_name]:
-                    probs = self.word_probabilities[source_name][word_lower]
+                # Track occurrence count
+                if word_lower not in word_occurrences:
+                    word_occurrences[word_lower] = 0
                 else:
-                    # Check if word with adjacent punctuation exists in probabilities
-                    # Look ahead for punctuation
-                    compound_word = word_lower
-                    next_index = i + 1
-                    while next_index < len(tokens) and tokens[next_index][1] == "punctuation":
-                        compound_word += tokens[next_index][0].lower()
-                        next_index += 1
+                    word_occurrences[word_lower] += 1
                     
-                    # Look behind for punctuation
-                    prev_compound_word = word_lower
-                    prev_index = i - 1
-                    while prev_index >= 0 and tokens[prev_index][1] == "punctuation":
-                        prev_compound_word = tokens[prev_index][0].lower() + prev_compound_word
-                        prev_index -= 1
+                current_occurrence = word_occurrences[word_lower]
+                
+                # Check if word exists in probabilities and we have data for this occurrence
+                if (word_lower in self.word_probabilities[source_name] and 
+                    current_occurrence < len(self.word_probabilities[source_name][word_lower])):
+                    prob = self.word_probabilities[source_name][word_lower][current_occurrence]
                     
-                    # Check compounds
-                    if compound_word in self.word_probabilities[source_name]:
-                        probs = self.word_probabilities[source_name][compound_word]
-                    elif prev_compound_word in self.word_probabilities[source_name]:
-                        probs = self.word_probabilities[source_name][prev_compound_word]
+                    if prob > 0.7:
+                        self.text_display.insert(tk.END, token, "green")
+                    elif prob > 0.35:
+                        self.text_display.insert(tk.END, token, "yellow")
                     else:
-                        probs = []
-                
-                # Apply coloring based on probability
-                max_prob = max(probs) if probs else 0.0
-                
-                if max_prob > 0.7:
-                    self.text_display.insert(tk.END, token, "green")
-                elif max_prob > 0.35:
-                    self.text_display.insert(tk.END, token, "yellow")
+                        self.text_display.insert(tk.END, token, "red")
                 else:
+                    # No probability or occurrence data, use red
                     self.text_display.insert(tk.END, token, "red")
             else:
                 # For punctuation and spaces
                 self.text_display.insert(tk.END, token)
-
+            
 def parse_arguments():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description='Fact-check an article against sources using OpenAI API.')
@@ -379,10 +409,13 @@ def main():
     # Parse command line arguments
     args = parse_arguments()
     
+    # init logging
+    logging.basicConfig(level=logging.INFO)
+
     # Initialize OpenAI client
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
-        print("Error: Please set the OPENAI_API_KEY environment variable")
+        logger.error("Please set the OPENAI_API_KEY environment variable")
         return
     
     # Set up client with base_url if provided
@@ -398,7 +431,7 @@ def main():
         sources = load_sources()
         
         if not sources:
-            print("Error: No source files found (source*.txt)")
+            logger.error("Error: No source files found (source*.txt)")
             return
         
         # Split article into blocks
@@ -427,7 +460,7 @@ def main():
             print(colored_article)
         
     except Exception as e:
-        logging.exception("An exception was thrown!")
+        logger.exception("An exception was thrown!")
 
 if __name__ == "__main__":
     main()
