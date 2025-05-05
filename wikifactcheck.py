@@ -95,6 +95,7 @@ def query_chatgpt(client: OpenAI, article_block: str, source_text: str, model_na
     try:
         response = client.chat.completions.create(
             model=model_name,
+            response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": "You are an expert fact-checker for Wikipedia articles."},
                 {"role": "user", "content": prompt}
